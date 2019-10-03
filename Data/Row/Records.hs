@@ -43,7 +43,7 @@ module Data.Row.Records
   -- * Native Conversion
   -- $native
   , toNative, fromNative
-  , ToNative, FromNative, NativeRows
+  , ToNative, FromNative, NativeRow
   -- * Dynamic Conversion
   , toDynamicMap, fromDynamicMap
   -- * Row operations
@@ -573,7 +573,7 @@ instance {-# OVERLAPPABLE #-}
 -- | Conversion helper to bring a record back into a Haskell type. Note that the
 -- native Haskell type must be an instance of 'Generic'.
 class (FromNativeG a) => ToNativeG a where
-  toNative' :: Rec (NativeRowsG a) -> a x
+  toNative' :: Rec (NativeRowG a) -> a x
 
 instance ToNativeG cs => ToNativeG (G.D1 m cs) where
   toNative' xs = G.M1 $ toNative' xs
@@ -588,55 +588,59 @@ instance (KnownSymbol name)
     => ToNativeG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) where
   toNative' rec = G.M1 $ G.K1 $ rec .! (Label @name)
 
-instance (ToNativeG l, ToNativeG r, Disjoint (NativeRowsG l) (NativeRowsG r))
+instance (ToNativeG l, ToNativeG r, Disjoint (NativeRowG l) (NativeRowG r))
     => ToNativeG (l G.:*: r) where
   toNative' rec = toNative' r1 G.:*: toNative' r2
     where
-      (r1 :: Rec (NativeRowsG l)) :+ (r2 :: Rec (NativeRowsG r)) = rec
+      (r1 :: Rec (NativeRowG l)) :+ (r2 :: Rec (NativeRowG r)) = rec
 
+-- | Whether the given native type admits a conversion from its corresponding
+-- row type (implies @FromNative@).
 class    (G.Generic t, ToNativeG (G.Rep t)) => ToNative t where {}
 instance (G.Generic t, ToNativeG (G.Rep t)) => ToNative t where {}
 
 -- | Convert a record to an exactly matching native Haskell type.
-toNative :: ToNative t => Rec (NativeRows t) -> t
+toNative :: ToNative t => Rec (NativeRow t) -> t
 toNative = G.to . toNative'
 
 
 -- | Conversion helper to turn a Haskell record into a row-types extensible
 -- record. Note that the native Haskell type must be an instance of 'Generic'.
 class FromNativeG a where
-  type NativeRowsG a :: Row *
-  fromNative' :: a x -> Rec (NativeRowsG a)
+  type NativeRowG a :: Row *
+  fromNative' :: a x -> Rec (NativeRowG a)
 
 instance FromNativeG cs => FromNativeG (G.D1 m cs) where
-  type NativeRowsG (G.D1 m cs) = NativeRowsG cs
+  type NativeRowG (G.D1 m cs) = NativeRowG cs
   fromNative' (G.M1 xs) = fromNative' xs
 
 instance FromNativeG cs => FromNativeG (G.C1 m cs) where
-  type NativeRowsG (G.C1 m cs) = NativeRowsG cs
+  type NativeRowG (G.C1 m cs) = NativeRowG cs
   fromNative' (G.M1 xs) = fromNative' xs
 
 instance FromNativeG G.U1 where
-  type NativeRowsG G.U1 = Empty
+  type NativeRowG G.U1 = Empty
   fromNative' G.U1 = empty
 
 instance (KnownSymbol name)
     => FromNativeG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) where
-  type NativeRowsG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) = name .== t
+  type NativeRowG (G.S1 ('G.MetaSel ('Just name) p s l) (G.Rec0 t)) = name .== t
   fromNative' (G.M1 (G.K1 x)) =  (Label @name) .== x
 
 instance (FromNativeG l, FromNativeG r)
     => FromNativeG (l G.:*: r) where
-  type NativeRowsG (l G.:*: r) = NativeRowsG l .+ NativeRowsG r
+  type NativeRowG (l G.:*: r) = NativeRowG l .+ NativeRowG r
   fromNative' (x G.:*: y) = fromNative' @l x .+ fromNative' @r y
 
+-- | Whether the given native type can be converted to a row type.
 class    (G.Generic t, FromNativeG (G.Rep t)) => FromNative t where {}
 instance (G.Generic t, FromNativeG (G.Rep t)) => FromNative t where {}
 
-type NativeRows t = NativeRowsG (G.Rep t)
+-- | The row type corresponding to a given native type.
+type NativeRow t = NativeRowG (G.Rep t)
 
 -- | Convert a Haskell record to a row-types Rec.
-fromNative :: FromNative t => t -> Rec (NativeRows t)
+fromNative :: FromNative t => t -> Rec (NativeRow t)
 fromNative = fromNative' . G.from
 
 
